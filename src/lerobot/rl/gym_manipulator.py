@@ -239,7 +239,6 @@ class RobotEnv(gym.Env):
             log_say("Reset the environment done.", play_sounds=True)
 
         precise_sleep(max(self.reset_time_s - (time.perf_counter() - start_time), 0.0))
-
         super().reset(seed=seed, options=options)
 
         # Reset episode tracking variables.
@@ -599,7 +598,18 @@ def control_loop(
 
     dataset = None
     if cfg.mode == "record":
-        action_features = teleop_device.action_features
+# Fix:AttributeError: 'NoneType' object has no attribute 'action_features'
+        if teleop_device is not None:
+            action_features = teleop_device.action_features
+        else:
+            act_shape = env.action_space.shape
+            action_features = {
+                ACTION: {
+                    "dtype": "float32",
+                    "shape": act_shape,
+                    "names": None,
+                }
+            }
         features = {
             ACTION: action_features,
             REWARD: {"dtype": "float32", "shape": (1,), "names": None},
