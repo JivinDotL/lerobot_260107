@@ -16,6 +16,7 @@
 
 from typing import TypedDict
 
+import numpy as np
 import torch
 
 from lerobot.utils.constants import ACTION
@@ -41,7 +42,13 @@ def move_transition_to_device(transition: Transition, device: str = "cpu") -> Tr
     }
 
     # Move action to device
-    transition[ACTION] = transition[ACTION].to(device, non_blocking=non_blocking)
+    # Check if action is a tensor, if not convert it first
+    if isinstance(transition[ACTION], torch.Tensor):
+        transition[ACTION] = transition[ACTION].to(device, non_blocking=non_blocking)
+    elif isinstance(transition[ACTION], np.ndarray):
+        transition[ACTION] = torch.from_numpy(transition[ACTION]).to(device, non_blocking=non_blocking)
+    else:
+        transition[ACTION] = torch.tensor(transition[ACTION], device=device)
 
     # Move reward and done if they are tensors
     if isinstance(transition["reward"], torch.Tensor):

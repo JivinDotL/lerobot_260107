@@ -252,8 +252,40 @@ class HILSerlRobotEnvConfig(EnvConfig):
     name: str = "real_robot"
 
     @property
+    def package_name(self) -> str:
+        """
+        Override default package name resolution.
+
+        - Training/keyboard sim uses the `gym_hil` package.
+        - If `name` is provided, use it as package name; otherwise fall back to `gym_hil`.
+        """
+        return self.name or "gym_hil"
+
+    @property
+    def gym_id(self) -> str:
+        """
+        Gym ID expected by gym.make.
+
+        Example: "gym_hil/PandaPickCubeKeyboard-v0"
+        """
+        return f"{self.package_name}/{self.task}"
+
+    @property
     def gym_kwargs(self) -> dict:
-        return {}
+        """Return gym.make kwargs for gym_hil environment.
+        
+        For gym_hil environments, we need to pass image_obs=True to get image observations.
+        Also extract gripper settings from processor config if available.
+        """
+        kwargs = {}
+        if self.name == "gym_hil":
+            kwargs["image_obs"] = True
+            kwargs["render_mode"] = "human"
+            # Extract gripper settings from processor config if available
+            if self.processor and self.processor.gripper:
+                kwargs["use_gripper"] = self.processor.gripper.use_gripper
+                kwargs["gripper_penalty"] = self.processor.gripper.gripper_penalty
+        return kwargs
 
 
 @EnvConfig.register_subclass("libero")

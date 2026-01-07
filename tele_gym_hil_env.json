@@ -1,0 +1,62 @@
+{
+    "env": {
+        "name": "gym_hil",
+        "task": "PandaPickCubeKeyboard-v0",
+        "fps": 10,
+        "processor": {
+            "control_mode": "keyboard",
+            "gripper": {
+                "use_gripper": true,
+                "gripper_penalty": -0.02
+            },
+            "reset": {
+                "control_time_s": 15.0,
+                "reset_time_s": 2.0,
+                "fixed_reset_joint_positions": [
+                    0.0,
+                    0.195,
+                    0.0,
+                    -2.43,
+                    0.0,
+                    2.62,
+                    0.785
+                ]
+            },
+            "image_preprocessing": {
+                "crop_params_dict": {
+                    "observation.images.front": [
+                        0,
+                        0,
+                        128,
+                        128
+                    ],
+                    "observation.images.wrist": [
+                        0,
+                        0,
+                        128,
+                        128
+                    ]
+                },
+                "resize_size": [
+                    128,
+                    128
+                ]
+            },
+            "observation": {
+                "display_cameras": false,
+                "add_joint_velocity_to_observation": true,
+                "add_current_to_observation": false
+            }
+        }
+    },
+    "dataset": {
+        "repo_id": "lisirui333/sim_keyboard_dataset",
+        "task": "PandaPickCubeKeyboard-v0",
+        "root": "/mnt/e/wsl/lerobot_260107_datasets/sim_keyboard_dataset",
+        "num_episodes_to_record": 35,
+        "replay_episode": null,
+        "push_to_hub": true
+    },
+    "mode": "record",
+    "device": "cuda"
+}

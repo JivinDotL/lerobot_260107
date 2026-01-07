@@ -16,6 +16,7 @@
 
 import logging
 import time
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
 
@@ -73,7 +74,10 @@ from lerobot.teleoperators import (
 )
 from lerobot.teleoperators.teleoperator import Teleoperator
 from lerobot.teleoperators.utils import TeleopEvents
-from lerobot.utils.constants import ACTION, DONE, OBS_IMAGES, OBS_STATE, REWARD
+
+# Key used to store teleoperator actions in complementary data
+TELEOP_ACTION_KEY = "teleop_action"
+from lerobot.utils.constants import ACTION, DONE, OBS_IMAGES, OBS_STATE, REWARD, HF_LEROBOT_HOME
 from lerobot.utils.robot_utils import precise_sleep
 from lerobot.utils.utils import log_say
 
@@ -543,6 +547,29 @@ def step_env_and_process_transition(
     new_info = processed_action_transition[TransitionKey.INFO].copy()
     new_info.update(info)
 
+    # If the environment (gym_hil) provides the actually applied teleop action, record it.
+    # This ensures the recorded dataset reflects the human-controlled deltas instead of the neutral action.
+    if "teleop_action" in info:
+        teleop_action = info["teleop_action"]
+        # Keep as numpy for downstream gym processors; ensure dtype float32
+        if isinstance(teleop_action, torch.Tensor):
+            teleop_action_np = teleop_action.detach().cpu().numpy().astype(np.float32)
+        else:
+            teleop_action_np = np.asarray(teleop_action, dtype=np.float32)
+
+        # Align teleop action dimension with the env action space to avoid shape mismatch
+        act_shape = getattr(env.action_space, "shape", None)
+        if act_shape is not None and len(act_shape) > 0:
+            target_dim = act_shape[0]
+            if teleop_action_np.shape[-1] > target_dim:
+                teleop_action_np = teleop_action_np[..., :target_dim]
+            elif teleop_action_np.shape[-1] < target_dim:
+                pad_width = target_dim - teleop_action_np.shape[-1]
+                teleop_action_np = np.pad(teleop_action_np, (0, pad_width), mode="constant")
+
+        processed_action = teleop_action_np
+        complementary_data[TELEOP_ACTION_KEY] = teleop_action_np
+
     new_transition = create_transition(
         observation=obs,
         action=processed_action,
@@ -599,7 +626,18 @@ def control_loop(
 
     dataset = None
     if cfg.mode == "record":
-        action_features = teleop_device.action_features
+# Fix:AttributeError: 'NoneType' object has no attribute 'action_features'
+        if teleop_device is not None:
+            action_features = teleop_device.action_features
+        else:
+            act_shape = env.action_space.shape
+            action_features = {
+                ACTION: {
+                    "dtype": "float32",
+                    "shape": act_shape,
+                    "names": None,
+                }
+            }
         features = {
             ACTION: action_features,
             REWARD: {"dtype": "float32", "shape": (1,), "names": None},
@@ -613,24 +651,60 @@ def control_loop(
             }
 
         for key, value in transition[TransitionKey.OBSERVATION].items():
-            if key == OBS_STATE:
-                features[key] = {
+            # Handle state-like tensors
+            if key in (OBS_STATE, "agent_pos"):
+                tensor = value if isinstance(value, torch.Tensor) else torch.as_tensor(value)
+                features[key if key == OBS_STATE else OBS_STATE] = {
                     "dtype": "float32",
-                    "shape": value.squeeze(0).shape,
+                    "shape": tensor.squeeze(0).shape,
                     "names": None,
                 }
-            if "image" in key:
+                continue
+
+            # Handle direct image keys (already flattened names containing "image")
+            if isinstance(value, torch.Tensor) and "image" in key:
                 features[key] = {
                     "dtype": "video",
                     "shape": value.squeeze(0).shape,
                     "names": ["channels", "height", "width"],
                 }
+                continue
+
+            # Handle nested pixel dicts from gym_hil (e.g., {"pixels": {"front": ..., "wrist": ...}})
+            if isinstance(value, dict):
+                for sub_key, sub_val in value.items():
+                    if isinstance(sub_val, torch.Tensor):
+                        full_key = f"{key}.{sub_key}"
+                        features[full_key] = {
+                            "dtype": "video",
+                            "shape": sub_val.squeeze(0).shape,
+                            "names": ["channels", "height", "width"],
+                        }
 
         # Create dataset
+        # Ensure all feature entries are well-formed dicts with a dtype to avoid KeyErrors downstream
+        features = {
+            key: value for key, value in features.items() if isinstance(value, dict) and "dtype" in value
+        }
+        # Ensure action feature always present (validate_frame requires it)
+        if ACTION not in features:
+            act_shape = env.action_space.shape
+            features[ACTION] = {"dtype": "float32", "shape": act_shape, "names": None}
+
+        # Resolve dataset root; if the target path already exists, create a time-stamped sibling to avoid FileExistsError
+        base_root = Path(cfg.dataset.root) if cfg.dataset.root is not None else HF_LEROBOT_HOME / cfg.dataset.repo_id
+        final_root = base_root
+        if final_root.exists():
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            final_root = base_root.parent / f"{base_root.name}_{timestamp}"
+            logging.warning(
+                "Dataset root already exists (%s). Using new path: %s", base_root.as_posix(), final_root.as_posix()
+            )
+
         dataset = LeRobotDataset.create(
             cfg.dataset.repo_id,
             cfg.env.fps,
-            root=cfg.dataset.root,
+            root=str(final_root),
             use_videos=True,
             image_writer_threads=4,
             image_writer_processes=0,
@@ -668,11 +742,15 @@ def control_loop(
             }
             # Use teleop_action if available, otherwise use the action from the transition
             action_to_record = transition[TransitionKey.COMPLEMENTARY_DATA].get(
-                "teleop_action", transition[TransitionKey.ACTION]
+                TELEOP_ACTION_KEY, transition[TransitionKey.ACTION]
             )
+            if isinstance(action_to_record, torch.Tensor):
+                action_to_record = action_to_record.cpu()
+            else:
+                action_to_record = np.asarray(action_to_record, dtype=np.float32)
             frame = {
                 **observations,
-                ACTION: action_to_record.cpu(),
+                ACTION: action_to_record,
                 REWARD: np.array([transition[TransitionKey.REWARD]], dtype=np.float32),
                 DONE: np.array([terminated or truncated], dtype=bool),
             }

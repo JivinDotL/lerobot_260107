@@ -55,6 +55,10 @@ def preprocess_observation(observations: dict[str, np.ndarray]) -> dict[str, Ten
     """
     # map to expected inputs for the policy
     return_observations = {}
+    # Debug: log raw observation keys
+    import logging
+    if "pixels" not in observations:
+        logging.warning(f"preprocess_observation: 'pixels' key not found in observations. Available keys: {list(observations.keys())}")
     if "pixels" in observations:
         if isinstance(observations["pixels"], dict):
             imgs = {f"{OBS_IMAGES}.{key}": img for key, img in observations["pixels"].items()}

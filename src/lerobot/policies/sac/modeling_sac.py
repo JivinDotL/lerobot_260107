@@ -104,6 +104,19 @@ class SACPolicy(
         use_target: bool = False,
         observation_features: Tensor | None = None,
     ) -> Tensor:
+        # Align action dim to expected config (e.g., some envs may emit 3D while config expects 4D with gripper)
+        target_dim = self.config.output_features["action"].shape[0]
+        if actions.shape[-1] != target_dim:
+            if actions.shape[-1] > target_dim:
+                actions = actions[..., :target_dim]
+            else:
+                pad = torch.zeros(
+                    *actions.shape[:-1],
+                    target_dim - actions.shape[-1],
+                    device=actions.device,
+                    dtype=actions.dtype,
+                )
+                actions = torch.cat([actions, pad], dim=-1)
         """Forward pass through a critic network ensemble
 
         Args:
@@ -318,7 +331,9 @@ class SACPolicy(
         # In the buffer we have the full action space (continuous + discrete)
         # We need to split them before concatenating them in the critic forward
         actions_discrete: Tensor = actions[:, DISCRETE_DIMENSION_INDEX:].clone()
+        # Actions come from a continuous distribution; clamp to valid discrete range before converting
         actions_discrete = torch.round(actions_discrete)
+        actions_discrete = torch.clamp(actions_discrete, min=0, max=self.config.num_discrete_actions - 1)
         actions_discrete = actions_discrete.long()
 
         discrete_penalties: Tensor | None = None
@@ -376,6 +391,19 @@ class SACPolicy(
         observation_features: Tensor | None = None,
     ) -> Tensor:
         actions_pi, log_probs, _ = self.actor(observations, observation_features)
+        # Align action dim if needed
+        target_dim = self.config.output_features["action"].shape[0]
+        if actions_pi.shape[-1] != target_dim:
+            if actions_pi.shape[-1] > target_dim:
+                actions_pi = actions_pi[..., :target_dim]
+            else:
+                pad = torch.zeros(
+                    *actions_pi.shape[:-1],
+                    target_dim - actions_pi.shape[-1],
+                    device=actions_pi.device,
+                    dtype=actions_pi.dtype,
+                )
+                actions_pi = torch.cat([actions_pi, pad], dim=-1)
 
         q_preds = self.critic_forward(
             observations=observations,
@@ -583,10 +611,18 @@ class SACObservationEncoder(nn.Module):
         Returns:
             Dictionary mapping image keys to their corresponding encoded features
         """
-        batched = torch.cat([obs[k] for k in self.image_keys], dim=0)
+        # Filter to only include keys that exist in obs
+        available_keys = [k for k in self.image_keys if k in obs]
+        if not available_keys:
+            # If no image keys found, return empty dict (should not happen in normal operation)
+            # This is a fallback to prevent KeyError
+            import logging
+            logging.warning(f"No image keys found in observation. Expected: {self.image_keys}, Got: {list(obs.keys())}")
+            return {}
+        batched = torch.cat([obs[k] for k in available_keys], dim=0)
         out = self.image_encoder(batched)
-        chunks = torch.chunk(out, len(self.image_keys), dim=0)
-        return dict(zip(self.image_keys, chunks, strict=False))
+        chunks = torch.chunk(out, len(available_keys), dim=0)
+        return dict(zip(available_keys, chunks, strict=False))
 
     def _encode_images(self, cache: dict[str, Tensor], detach: bool) -> Tensor:
         """Encode image features from cached observations.
@@ -611,6 +647,15 @@ class SACObservationEncoder(nn.Module):
             if detach:
                 x = x.detach()
             feats.append(x)
+        if not feats:
+            # If no image features, return zeros with correct shape
+            # This should not happen in normal operation, but prevents crashes
+            import logging
+            logging.warning("No image features in cache, returning zeros. This may indicate a preprocessing issue.")
+            # Return zeros with shape matching expected output (latent_dim)
+            # Get device from kernel parameter of SpatialLearnedEmbeddings
+            device = next(iter(self.spatial_embeddings.values())).kernel.device
+            return torch.zeros(1, self.config.latent_dim, device=device)
         return torch.cat(feats, dim=-1)
 
     @property
@@ -737,7 +782,7 @@ class CriticEnsemble(nn.Module):
     ) -> torch.Tensor:
         device = get_device_from_parameters(self)
         # Move each tensor in observations to device
-        observations = {k: v.to(device) for k, v in observations.items()}
+        observations = {k: v.to(device) for k, v in observations.items() if v is not None and isinstance(v, torch.Tensor)}
 
         obs_enc = self.encoder(observations, cache=observation_features)
 
@@ -790,7 +835,8 @@ class DiscreteCritic(nn.Module):
         self, observations: torch.Tensor, observation_features: torch.Tensor | None = None
     ) -> torch.Tensor:
         device = get_device_from_parameters(self)
-        observations = {k: v.to(device) for k, v in observations.items()}
+        # Filter out None values from observations
+        observations = {k: v.to(device) for k, v in observations.items() if v is not None and isinstance(v, torch.Tensor)}
         obs_enc = self.encoder(observations, cache=observation_features)
         return self.output_layer(self.net(obs_enc))
 

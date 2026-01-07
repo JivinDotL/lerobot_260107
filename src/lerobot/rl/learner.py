@@ -1160,6 +1160,23 @@ def process_transitions(
                 logging.warning("[LEARNER] NaN detected in transition, skipping")
                 continue
 
+            # Safety: align action dim with replay buffer storage to avoid shape mismatch (e.g., 5D → 4D)
+            action = transition[ACTION]
+            if isinstance(action, torch.Tensor) and hasattr(replay_buffer, "actions"):
+                target_dim = replay_buffer.actions.shape[-1]
+                if action.shape[-1] != target_dim:
+                    if action.shape[-1] > target_dim:
+                        action = action[..., :target_dim]
+                    else:
+                        pad = torch.zeros(
+                            *action.shape[:-1],
+                            target_dim - action.shape[-1],
+                            device=action.device,
+                            dtype=action.dtype,
+                        )
+                        action = torch.cat([action, pad], dim=-1)
+                    transition[ACTION] = action
+
             replay_buffer.add(**transition)
 
             # Add to offline buffer if it's an intervention

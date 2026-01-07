@@ -1,0 +1,50 @@
+1.克隆lerobot
+git clone https://github.com/huggingface/lerobot.git
+cd lerobot
+
+2.创建环境
+conda create -y -n lerobot python=3.10
+conda activate lerobot
+pip install -e ".[hilserl]"
+
+3.修改config
+3.1  修改gym_hil_env.json
+收集数据集时："mode": null 改为 "mode": "record"
+用键盘控制：
+（1）将 "control_mode": "gamepad" 改为 "control_mode": "keyboard"
+（2）将 "task": "PandaPickCubeGamepad-v0" 改为 "task": "PandaPickCubeKeyboard-v0"
+数据集保存路径：
+（1）"repo_id"：
+	如果想上传到云端："your_username/sim_keyboard_dataset"（需要先登录 HuggingFace）
+	如果只本地保存：null
+（2）设置 "push_to_hub"：true（上传）或 false（不上传）
+（3）如果本地保存，设置
+	"dataset_root":本地路径
+
+3.2 修改 train_gym_hil_env.json
+（1）将 "control_mode": "gamepad" 改为 "control_mode": "keyboard"
+（2）将 "task": "PandaPickCubeGamepad-v0" 改为 "task": "PandaPickCubeKeyboard-v0"
+（3）dataset.repo_id设置为本地路径或 null，并设置 dataset_root 
+
+4.运行
+conda activate lerobot  # 激活环境
+
+4.1 运行数据收集：
+cd /mnt/e/wsl/lerobot_260107/
+python -m lerobot.rl.gym_manipulator --config_path /mnt/e/wsl/lerobot_260107/tele_gym_hil_env.json
+
+4.2 运行Actor：
+cd /mnt/e/wsl/lerobot_260107/
+python -m lerobot.rl.actor --config_path /mnt/e/wsl/lerobot_260107/train_gym_hil_env.json
+
+4.3 运行Learner：
+cd /mnt/e/wsl/lerobot_260107/
+python -m lerobot.rl.learner --config_path /mnt/e/wsl/lerobot_260107/train_gym_hil_env.json
+
+5.键盘控制说明：
+方向键 ↑↓←→：控制末端执行器在 x、y 方向移动
+Shift 键：控制 z 方向（上/下）
+Ctrl 键：控制抓手（开/合）
+Enter：标记任务成功
+Backspace：标记任务失败
+ESC：退出程序

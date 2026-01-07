@@ -590,6 +590,34 @@ def main():
     print(f"Creating {policy_type} policy configuration...")
     policy_config = make_policy_config(policy_type, **cleaned_config)
 
+    # ---- 修复 SAC 下 nested kwargs 不是 dataclass 的问题 ----
+    if policy_type == "sac":
+        from lerobot.policies.sac.configuration_sac import (
+            CriticNetworkConfig,
+            ActorNetworkConfig,
+            PolicyConfig,
+        )
+
+        if isinstance(policy_config.critic_network_kwargs, dict):
+            policy_config.critic_network_kwargs = CriticNetworkConfig(
+                **policy_config.critic_network_kwargs
+            )
+        if isinstance(policy_config.actor_network_kwargs, dict):
+            policy_config.actor_network_kwargs = ActorNetworkConfig(
+                **policy_config.actor_network_kwargs
+            )
+        if isinstance(policy_config.policy_kwargs, dict):
+            policy_config.policy_kwargs = PolicyConfig(
+                **policy_config.policy_kwargs
+            )
+        if hasattr(policy_config, "discrete_critic_network_kwargs") and isinstance(
+            policy_config.discrete_critic_network_kwargs, dict
+        ):
+            policy_config.discrete_critic_network_kwargs = CriticNetworkConfig(
+                **policy_config.discrete_critic_network_kwargs
+            )
+    # ------------------------------------------------------
+
     # Create policy instance using the factory
     print(f"Instantiating {policy_type} policy...")
     policy_class = get_policy_class(policy_type)

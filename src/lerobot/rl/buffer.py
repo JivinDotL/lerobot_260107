@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import functools
+import logging
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from typing import TypedDict
@@ -125,8 +126,9 @@ class ReplayBuffer:
         self.image_augmentation_function = image_augmentation_function
 
         if image_augmentation_function is None:
-            base_function = functools.partial(random_shift, pad=4)
-            self.image_augmentation_function = torch.compile(base_function)
+            # Use eager mode for image augmentation to avoid torch.compile / Triton dependency
+            # (torch.compile can fail on Windows or without Triton installed)
+            self.image_augmentation_function = functools.partial(random_shift, pad=4)
         self.use_drq = use_drq
 
     def _initialize_storage(

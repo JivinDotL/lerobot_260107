@@ -161,7 +161,14 @@ def rollout(
     check_env_attributes_and_types(env)
     while not np.all(done) and step < max_steps:
         # Numpy array to tensor and changing dictionary keys to LeRobot policy format.
+        # Debug: log raw observation keys before preprocessing
+        if step == 0:
+            import logging
+            logging.debug(f"Raw observation keys before preprocess_observation: {list(observation.keys())}")
         observation = preprocess_observation(observation)
+        if step == 0:
+            import logging
+            logging.debug(f"Observation keys after preprocess_observation: {list(observation.keys())}")
         if return_observations:
             all_observations.append(deepcopy(observation))
 
@@ -199,7 +206,21 @@ def rollout(
                     "Unsupported `final_info` format: expected dict (Gymnasium >= 1.0). "
                     "You're likely using an older version of gymnasium (< 1.0). Please upgrade."
                 )
-            successes = final_info["is_success"].tolist()
+            # Handle case where is_success might not be present (e.g., gym_hil environment)
+            if "is_success" in final_info:
+                successes = final_info["is_success"].tolist()
+            else:
+                # If is_success is not available, check if reward indicates success (reward > 0.5)
+                # or use False as default
+                successes = [False] * env.num_envs
+                # Try to infer success from reward if available
+                if "reward" in final_info:
+                    reward_array = final_info["reward"]
+                    if hasattr(reward_array, "tolist"):
+                        rewards = reward_array.tolist()
+                    else:
+                        rewards = [reward_array] if not isinstance(reward_array, list) else reward_array
+                    successes = [r > 0.5 for r in rewards]
         else:
             successes = [False] * env.num_envs
 
