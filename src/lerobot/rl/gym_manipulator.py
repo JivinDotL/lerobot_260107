@@ -24,6 +24,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import cv2
 import gymnasium as gym
 import numpy as np
 import torch
@@ -289,8 +290,12 @@ class RobotEnv(gym.Env):
             image_keys = [key for key in current_observation if "image" in key]
 
             for key in image_keys:
-                cv2.imshow(key, cv2.cvtColor(current_observation[key].numpy(), cv2.COLOR_RGB2BGR))
-                cv2.waitKey(1)
+                try:
+                    cv2.imshow(key, cv2.cvtColor(current_observation[key].numpy(), cv2.COLOR_RGB2BGR))
+                    cv2.waitKey(1)
+                except cv2.error:
+                    # 如果GUI不可用，则跳过显示
+                    pass
 
     def close(self) -> None:
         """Close environment and disconnect robot."""
@@ -541,6 +546,19 @@ def step_env_and_process_transition(
     processed_action = processed_action_transition[TransitionKey.ACTION]
 
     obs, reward, terminated, truncated, info = env.step(processed_action)
+    # 尝试显示图像，如果失败则跳过
+    try:
+        img_front = obs['pixels']['front']
+        cv2.imshow('img_front', img_front)
+
+        img_wrist = obs['pixels']['wrist']
+        cv2.imshow('img_wrist', img_wrist)
+        
+        # 添加按键检测以允许关闭窗口
+        cv2.waitKey(1)
+    except cv2.error:
+        # 如果GUI不可用，则跳过显示
+        pass
 
     reward = reward + processed_action_transition[TransitionKey.REWARD]
     terminated = terminated or processed_action_transition[TransitionKey.DONE]
@@ -605,16 +623,15 @@ def control_loop(
 
     dataset = None
     if cfg.mode == "record":
-# Fix:AttributeError: 'NoneType' object has no attribute 'action_features'
-        if teleop_device is not None:
-            action_features = teleop_device.action_features
-        else:
+        if teleop_device is None:
             act_shape = env.action_space.shape
             action_features = {
                     "dtype": "float32",
                     "shape": act_shape,
                     "names": None,
                 }
+        else:
+            action_features = teleop_device.action_features
 
         features = {
             ACTION: action_features,
@@ -643,6 +660,7 @@ def control_loop(
                 }
 
         # Create dataset
+        print(cfg.dataset.root)
         dataset = LeRobotDataset.create(
             cfg.dataset.repo_id,
             cfg.env.fps,
