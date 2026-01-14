@@ -16,6 +16,7 @@
 import concurrent.futures
 import contextlib
 import logging
+import os
 import shutil
 import tempfile
 from collections.abc import Callable
@@ -510,7 +511,10 @@ class LeRobotDatasetMetadata:
         obj = cls.__new__(cls)
         obj.repo_id = repo_id
         obj.root = Path(root) if root is not None else HF_LEROBOT_HOME / repo_id
-
+        if os.path.exists(obj.root):
+            # 删除obj.root
+            shutil.rmtree(obj.root)        
+        
         obj.root.mkdir(parents=True, exist_ok=False)
 
         features = {**features, **DEFAULT_FEATURES}

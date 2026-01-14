@@ -14,6 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# import os
+# import sys
+# script_dir = os.path.dirname(os.path.realpath(__file__))
+# sys.path.insert(0, os.path.abspath(os.path.join(script_dir, "../..")))
+
 import logging
 import time
 from dataclasses import dataclass
@@ -315,6 +320,8 @@ def make_robot_env(cfg: HILSerlRobotEnvConfig) -> tuple[gym.Env, Any]:
         use_gripper = cfg.processor.gripper.use_gripper if cfg.processor.gripper is not None else True
         gripper_penalty = cfg.processor.gripper.gripper_penalty if cfg.processor.gripper is not None else 0.0
 
+        print(f"Creating gym_hil environment: gym_hil/{cfg.task}, image_obs=True, render_mode='human', use_gripper={use_gripper}, gripper_penalty={gripper_penalty}")
+
         env = gym.make(
             f"gym_hil/{cfg.task}",
             image_obs=True,
@@ -604,12 +611,11 @@ def control_loop(
         else:
             act_shape = env.action_space.shape
             action_features = {
-                ACTION: {
                     "dtype": "float32",
                     "shape": act_shape,
                     "names": None,
                 }
-            }
+
         features = {
             ACTION: action_features,
             REWARD: {"dtype": "float32", "shape": (1,), "names": None},
