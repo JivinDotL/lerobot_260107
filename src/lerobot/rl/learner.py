@@ -100,7 +100,7 @@ from lerobot.utils.utils import (
     init_logging,
 )
 
-from .learner_service import MAX_WORKERS, SHUTDOWN_TIMEOUT, LearnerService
+from learner_service import MAX_WORKERS, SHUTDOWN_TIMEOUT, LearnerService
 
 
 @parser.wrap()

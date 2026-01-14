@@ -228,7 +228,7 @@ def make_policy_obs(obs, device: torch.device = "cpu"):
 def main():
     """Main function - coordinates actor and learner processes."""
 
-    device = "mps"  # or "cuda" or "cpu"
+    device = "cuda"  # or "cuda" or "cpu"
     output_directory = Path("outputs/robot_learning_tutorial/hil_serl")
     output_directory.mkdir(parents=True, exist_ok=True)
 
