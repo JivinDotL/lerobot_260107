@@ -100,7 +100,7 @@ from lerobot.utils.utils import (
     init_logging,
 )
 
-from learner_service import MAX_WORKERS, SHUTDOWN_TIMEOUT, LearnerService
+from lerobot.rl.learner_service import MAX_WORKERS, SHUTDOWN_TIMEOUT, LearnerService
 
 
 @parser.wrap()
@@ -376,6 +376,8 @@ def add_actor_information_and_train(
             shutdown_event=shutdown_event,
         )
 
+        # 打印replay_buffer.size和offline_replay_buffer.size
+        logging.info("[LEARNER] buffer size: %d, Offline replay buffer size: %d", len(replay_buffer) , len(offline_replay_buffer))
         # Wait until the replay buffer has enough samples to start training
         if len(replay_buffer) < online_step_before_learning:
             continue
@@ -1076,6 +1078,9 @@ def check_nan_in_transition(
             if raise_error:
                 raise ValueError(f"NaN detected in observations[{key}]")
 
+    # Log action dimensions for tracking
+    logging.debug(f"Action tensor shape: {actions.shape}, Action tensor device: {actions.device}")
+
     # Check next state
     for key, tensor in next_state.items():
         if torch.isnan(tensor).any():
@@ -1159,6 +1164,26 @@ def process_transitions(
             ):
                 logging.warning("[LEARNER] NaN detected in transition, skipping")
                 continue
+            
+        # Log action dimensions for tracking
+            print(f"[LEANER] transition - Shape: {transition[ACTION].shape}")
+        
+            # # Safety: align action dim with replay buffer storage to avoid shape mismatch (e.g., 5D → 4D)
+            # action = transition[ACTION]
+            # if isinstance(action, torch.Tensor) and hasattr(replay_buffer, "actions"):
+            #     target_dim = replay_buffer.actions.shape[-1]
+            #     if action.shape[-1] != target_dim:
+            #         if action.shape[-1] > target_dim:
+            #             action = action[..., :target_dim]
+            #         else:
+            #             pad = torch.zeros(
+            #                 *action.shape[:-1],
+            #                 target_dim - action.shape[-1],
+            #                 device=action.device,
+            #                 dtype=action.dtype,
+            #             )
+            #             action = torch.cat([action, pad], dim=-1)
+            #         transition[ACTION] = action
 
             replay_buffer.add(**transition)
 

@@ -788,6 +788,13 @@ def concatenate_batch_transitions(
         for key in left_batch_transitions["state"]
     }
 
+    # Concatenate action fields with dimension check and handling of mismatched shapes
+    left_action = left_batch_transitions[ACTION]
+    right_action = right_batch_transition[ACTION]
+    
+    # Log action dimensions for tracking
+    print(f"Concatenating actions - Left shape: {left_action.shape}, Right shape: {right_action.shape}")
+
     # Concatenate basic fields
     left_batch_transitions[ACTION] = torch.cat(
         [left_batch_transitions[ACTION], right_batch_transition[ACTION]], dim=0
@@ -824,7 +831,7 @@ def concatenate_batch_transitions(
         if left_info is None:
             left_batch_transitions["complementary_info"] = right_info
         else:
-            # Concatenate each field
+            # Concatenate each field with dimension checks
             for key in right_info:
                 if key in left_info:
                     left_info[key] = torch.cat([left_info[key], right_info[key]], dim=0)

@@ -90,7 +90,7 @@ from lerobot.utils.utils import (
     init_logging,
 )
 
-from .gym_manipulator import (
+from lerobot.rl.gym_manipulator import (
     create_transition,
     make_processors,
     make_robot_env,
@@ -290,6 +290,10 @@ def act_with_policy(
         with policy_timer:
             # Extract observation from transition for policy
             action = policy.select_action(batch=observation)
+            
+        # Log action dimensions for tracking
+        logging.debug(f"[ACTOR] Action selected - Shape: {action.shape}, Device: {action.device}")
+        
         policy_fps = policy_timer.fps_last
 
         log_policy_frequency_issue(policy_fps=policy_fps, cfg=cfg, interaction_step=interaction_step)
@@ -313,6 +317,9 @@ def act_with_policy(
         # Teleop action is the action that was executed in the environment
         # It is either the action from the teleop device or the action from the policy
         executed_action = new_transition[TransitionKey.COMPLEMENTARY_DATA]["teleop_action"]
+
+        # Log executed action dimensions for tracking
+        logging.debug(f"[ACTOR] Executed action - Shape: {executed_action.shape}, Device: {executed_action.device}")
 
         reward = new_transition[TransitionKey.REWARD]
         done = new_transition.get(TransitionKey.DONE, False)

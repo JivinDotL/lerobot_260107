@@ -159,7 +159,7 @@
         "target_entropy": null,
         "use_backup_entropy": true,
         "grad_clip_norm": 10.0,
-        "num_discrete_actions": 3,
+        "num_discrete_actions": null,
         "critic_network_kwargs": {
             "hidden_dims": [
                 256,

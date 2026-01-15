@@ -199,6 +199,7 @@ def create_transition(
     Returns:
         A complete `EnvTransition` dictionary.
     """
+    # 尝试注释TRUNCATED和INFO
     return {
         TransitionKey.OBSERVATION: observation,
         TransitionKey.ACTION: action,

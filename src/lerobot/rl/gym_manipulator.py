@@ -578,6 +578,8 @@ def step_env_and_process_transition(
     )
     new_transition = env_processor(new_transition)
 
+    # print(new_transition)
+
     return new_transition
 
 
